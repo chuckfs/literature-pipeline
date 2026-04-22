@@ -4,25 +4,30 @@ import re
 def clean_flow(flow):
     cleaned = []
     buffer = []
+    list_buffer = []
 
     for item in flow:
         if item["type"] != "paragraph":
             flush_buffer(buffer, cleaned)
+            flush_list(list_buffer, cleaned)
             cleaned.append(item)
             continue
 
         text = normalize_text(item["text"])
+        page = item.get("page")
 
-        if is_noise(text):
+        if is_noise(text, page):
             continue
 
         if is_list_item(text):
-            cleaned.append({
+            list_buffer.append({
                 "type": "list_item",
                 "text": text,
-                "page": item["page"]
+                "page": page
             })
             continue
+        else:
+            flush_list(list_buffer, cleaned)
 
         # Merge broken paragraphs
         if buffer:
@@ -30,13 +35,24 @@ def clean_flow(flow):
                 buffer[-1]["text"] += " " + text
             else:
                 buffer.append(
-                    {"type": "paragraph", "text": text, "page": item["page"]})
+                    {"type": "paragraph", "text": text, "page": page})
         else:
-            buffer.append(
-                {"type": "paragraph", "text": text, "page": item["page"]})
+            buffer.append({"type": "paragraph", "text": text, "page": page})
 
     flush_buffer(buffer, cleaned)
+    flush_list(list_buffer, cleaned)
     return cleaned
+
+
+def flush_list(list_buffer, cleaned):
+    if not list_buffer:
+        return
+
+    cleaned.append({
+        "type": "list",
+        "children": list_buffer.copy()
+    })
+    list_buffer.clear()
 
 
 def flush_buffer(buffer, cleaned):
@@ -56,7 +72,7 @@ def normalize_text(text):
     return text.strip()
 
 
-def is_noise(text):
+def is_noise(text, page=None):
     if len(text) < 3:
         return True
 
@@ -66,13 +82,34 @@ def is_noise(text):
     if re.match(r"^[A-Z0-9\-]+$", text) and len(text) < 6:
         return True
 
+    # Aggressive filtering for early pages (front matter junk)
+    if page and page <= 3 and len(text) < 25:
+        return True
+
+    lowered = text.lower()
+
+    # Remove metadata / publishing noise
+    if "www." in lowered:
+        return True
+
+    if "copyright" in lowered:
+        return True
+
+    if "catalog item" in lowered:
+        return True
+
+    if "world service office" in lowered:
+        return True
+
     return False
 
 
 def is_list_item(text):
-    # short lines, no punctuation → likely list
-    if len(text) < 80 and not re.search(r"[.!?]", text):
+    words = text.split()
+
+    if len(words) <= 6 and not any(p in text for p in ".!?"):
         return True
+
     return False
 
 
