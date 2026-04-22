@@ -1,15 +1,24 @@
 import re
 
 
-def clean_flow(flow):
+def clean_flow(flow, return_stats=False):
     cleaned = []
     buffer = []
     list_buffer = []
 
+    stats = {
+        "input_items": len(flow),
+        "output_items": 0,
+        "noise_removed": 0,
+        "lists_created": 0,
+        "list_items_created": 0,
+        "paragraph_merges": 0
+    }
+
     for item in flow:
         if item["type"] != "paragraph":
             flush_buffer(buffer, cleaned)
-            flush_list(list_buffer, cleaned)
+            flush_list(list_buffer, cleaned, stats)
             cleaned.append(item)
             continue
 
@@ -19,8 +28,8 @@ def clean_flow(flow):
         # HARD FILTER front matter (first 3 pages are junk for NA books)
         if page and page <= 3:
             continue
-
         if is_noise(text, page):
+            stats["noise_removed"] += 1
             continue
 
         if is_list_item(text):
@@ -31,14 +40,16 @@ def clean_flow(flow):
                     "text": t,
                     "page": page
                 })
+                stats["list_items_created"] += 1
             continue
         else:
-            flush_list(list_buffer, cleaned)
+            flush_list(list_buffer, cleaned, stats)
 
         # Merge broken paragraphs
         if buffer:
             if should_merge(buffer[-1], text, buffer[-1].get("page"), page):
                 buffer[-1]["text"] += " " + text
+                stats["paragraph_merges"] += 1
             else:
                 buffer.append(
                     {"type": "paragraph", "text": text, "page": page})
@@ -46,11 +57,14 @@ def clean_flow(flow):
             buffer.append({"type": "paragraph", "text": text, "page": page})
 
     flush_buffer(buffer, cleaned)
-    flush_list(list_buffer, cleaned)
+    flush_list(list_buffer, cleaned, stats)
+    stats["output_items"] = len(cleaned)
+    if return_stats:
+        return cleaned, stats
     return cleaned
 
 
-def flush_list(list_buffer, cleaned):
+def flush_list(list_buffer, cleaned, stats=None):
     if not list_buffer:
         return
 
@@ -58,6 +72,8 @@ def flush_list(list_buffer, cleaned):
         "type": "list",
         "children": list_buffer.copy()
     })
+    if stats is not None:
+        stats["lists_created"] += 1
     list_buffer.clear()
 
 
