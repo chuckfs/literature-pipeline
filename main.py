@@ -1,11 +1,11 @@
 import json
 from pathlib import Path
+from tqdm import tqdm  # ← move this up
 
 from core.extractor import extract_document
 from core.flow_builder import build_flow
 from parsers import load_parsers
 from config import JOBS
-from tqdm import tqdm
 
 
 def run():
