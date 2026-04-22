@@ -5,6 +5,7 @@ import time
 
 from core.extractor import extract_document
 from core.flow_builder import build_flow
+from core.cleaner import clean_flow
 from parsers import load_parsers
 from config import JOBS
 
@@ -22,6 +23,9 @@ def run():
 
         image_dir = Path(job["output"]) / "images"
         flow = build_flow(doc, image_dir)
+
+        # Clean and normalize extracted content
+        flow = clean_flow(flow)
 
         parser = parsers.get(job["parser"])
 
