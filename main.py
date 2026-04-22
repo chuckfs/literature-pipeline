@@ -34,8 +34,11 @@ def run():
 
         logger.info(
             "Cleaning flow (removing noise, fixing lists, preserving page integrity)")
-        flow = clean_flow(flow)
+        flow, stats = clean_flow(flow, return_stats=True)
         logger.info(f"Cleaner complete — {len(flow)} items ready for parsing")
+        logger.info(
+            f"Cleaner stats → in:{stats['input_items']} | out:{stats['output_items']} | removed:{stats['noise_removed']} | lists:{stats['lists_created']} | list_items:{stats['list_items_created']} | merges:{stats['paragraph_merges']}"
+        )
 
         logger.info(f"Using parser: {job['parser']}")
         parser = parsers.get(job["parser"])
