@@ -16,7 +16,10 @@ def build_flow(doc, image_dir: Path):
 
         # TEXT BLOCKS
         if hasattr(item, "text") and item.text:
-            text = item.export_to_markdown().strip()
+            if hasattr(item, "export_to_markdown"):
+                text = item.export_to_markdown().strip()
+            else:
+                text = item.text.strip()
 
             if not text:
                 continue
