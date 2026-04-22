@@ -16,22 +16,28 @@ def clean_flow(flow):
         text = normalize_text(item["text"])
         page = item.get("page")
 
+        # HARD FILTER front matter (first 3 pages are junk for NA books)
+        if page and page <= 3:
+            continue
+
         if is_noise(text, page):
             continue
 
         if is_list_item(text):
-            list_buffer.append({
-                "type": "list_item",
-                "text": text,
-                "page": page
-            })
+            items = split_inline_list(text)
+            for t in items:
+                list_buffer.append({
+                    "type": "list_item",
+                    "text": t,
+                    "page": page
+                })
             continue
         else:
             flush_list(list_buffer, cleaned)
 
         # Merge broken paragraphs
         if buffer:
-            if should_merge(buffer[-1], text):
+            if should_merge(buffer[-1], text, buffer[-1].get("page"), page):
                 buffer[-1]["text"] += " " + text
             else:
                 buffer.append(
@@ -63,7 +69,7 @@ def flush_buffer(buffer, cleaned):
 
 def normalize_text(text):
     # Remove weird spacing like: L I V I N G
-    text = re.sub(r"(?:\b[A-Z]\s+){3,}[A-Z]\b",
+    text = re.sub(r"(?:\b[A-Z]\s+){2,}[A-Z]\b",
                   lambda m: m.group(0).replace(" ", ""), text)
 
     # Fix spacing issues
@@ -101,6 +107,10 @@ def is_noise(text, page=None):
     if "world service office" in lowered:
         return True
 
+    # Kill long weird OCR / multilingual junk
+    if len(text.split()) > 12 and not text.islower():
+        return True
+
     return False
 
 
@@ -113,7 +123,11 @@ def is_list_item(text):
     return False
 
 
-def should_merge(prev, current):
+def should_merge(prev, current, prev_page, current_page):
+    # NEVER merge across pages (you want page accuracy)
+    if prev_page != current_page:
+        return False
+
     if prev["text"].endswith((".", "!", "?")):
         return False
 
@@ -121,3 +135,8 @@ def should_merge(prev, current):
         return True
 
     return False
+
+
+def split_inline_list(text):
+    parts = re.split(r'(?<!\\.)\\s+(?=[A-Z][a-z])', text)
+    return [p.strip() for p in parts if len(p.strip()) > 2]
