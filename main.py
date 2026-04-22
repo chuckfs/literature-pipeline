@@ -1,12 +1,21 @@
 import json
-from pathlib import Path
-from tqdm import tqdm
-import time
 import logging
+import os
+import time
+from pathlib import Path
 
+from tqdm import tqdm
+
+import config as app_config
+from core.cleaner import clean_flow
 from core.extractor import extract_document
 from core.flow_builder import build_flow
-from core.cleaner import clean_flow
+from core.health import (
+    check_cleaner_char_shrinkage,
+    check_cleaner_stats,
+    flow_text_char_count,
+    scan_unknown_flow_types,
+)
 from parsers import load_parsers
 from config import JOBS
 
@@ -34,11 +43,35 @@ def run():
 
         logger.info(
             "Cleaning flow (removing noise, fixing lists, preserving page integrity)")
-        flow, stats = clean_flow(flow, return_stats=True)
+        chars_before = flow_text_char_count(flow)
+        flow, stats = clean_flow(
+            flow,
+            return_stats=True,
+            strip_toc_lines=getattr(app_config, "CLEANER_STRIP_TOC_LINES", False),
+        )
+        chars_after = flow_text_char_count(flow)
+        check_cleaner_stats(stats, logger)
+        check_cleaner_char_shrinkage(chars_before, chars_after, logger)
+
         logger.info(f"Cleaner complete — {len(flow)} items ready for parsing")
         logger.info(
-            f"Cleaner stats → in:{stats['input_items']} | out:{stats['output_items']} | removed:{stats['noise_removed']} | lists:{stats['lists_created']} | list_items:{stats['list_items_created']} | merges:{stats['paragraph_merges']}"
+            "Cleaner stats → in:%s | out:%s | removed:%s | toc_lines:%s | toc_blocks:%s | lists:%s | list_items:%s | merges:%s",
+            stats["input_items"],
+            stats["output_items"],
+            stats["noise_removed"],
+            stats.get("toc_lines_structured", 0),
+            stats.get("toc_blocks_created", 0),
+            stats["lists_created"],
+            stats["list_items_created"],
+            stats["paragraph_merges"],
         )
+
+        _ALLOWED_FLOW = frozenset(
+            {"paragraph", "heading", "image", "list", "quote", "toc"}
+        )
+        unknown = scan_unknown_flow_types(flow, _ALLOWED_FLOW)
+        if unknown:
+            logger.warning("Unexpected flow block types after clean: %s", ", ".join(unknown))
 
         logger.info(f"Using parser: {job['parser']}")
         parser = parsers.get(job["parser"])
@@ -57,6 +90,19 @@ def run():
             "structure": job["structure"],
             "content": structured_content
         }
+
+        debug_on = os.environ.get("LITERATURE_PIPELINE_DEBUG", "").lower() in (
+            "1",
+            "true",
+            "yes",
+        )
+        if debug_on:
+            output_data["_debug"] = {
+                "cleaner_stats": stats,
+                "chars_before_clean": chars_before,
+                "chars_after_clean": chars_after,
+                "unknown_flow_types": unknown,
+            }
 
         safe_name = job['book'].lower().replace(' ', '_').replace('/', '_')
         output_path = Path(job["output"]) / f"{safe_name}.json"

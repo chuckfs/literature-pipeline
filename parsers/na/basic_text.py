@@ -1,4 +1,16 @@
+import logging
+
 from core.schema import create_node
+
+logger = logging.getLogger(__name__)
+
+_HANDLED = frozenset({"heading", "paragraph", "image", "list", "quote", "toc"})
+
+
+def _flow_meta(item):
+    fk = item.get("flow_kind")
+    return {"flow_kind": fk} if fk else None
+
 
 def parse(flow: list) -> list:
     """
@@ -6,8 +18,7 @@ def parse(flow: list) -> list:
     """
     chapters = []
     current_chapter = None
-    
-    # State flags
+
     awaiting_chapter_title = False
     book_two_mode = False
 
@@ -17,7 +28,24 @@ def parse(flow: list) -> list:
             chapters.append(current_chapter)
 
     for item in flow:
-        if item["type"] not in ["heading", "paragraph", "image"]:
+        if item["type"] not in _HANDLED:
+            logger.warning(
+                "basic_text: unknown flow type %r — preserving text as paragraph",
+                item.get("type"),
+            )
+            if not current_chapter:
+                current_chapter = create_node("chapter", title="Title Page & Copyright")
+            if item.get("text") is not None:
+                meta = dict(_flow_meta(item) or {})
+                meta["unknown_flow_type"] = item["type"]
+                current_chapter["children"].append(
+                    create_node(
+                        "paragraph",
+                        text=item.get("text", ""),
+                        page=item.get("page"),
+                        meta=meta,
+                    )
+                )
             continue
 
         raw_text = item.get("text", "")
@@ -25,67 +53,119 @@ def parse(flow: list) -> list:
         upper_clean = clean_text.upper()
         page_num = item.get("page")
 
-        # 1. Handle Images
         if item["type"] == "image":
-            if current_chapter:
-                current_chapter["children"].append(create_node("image", src=item["src"], page=page_num))
+            if not current_chapter:
+                current_chapter = create_node("chapter", title="Title Page & Copyright")
+            current_chapter["children"].append(
+                create_node("image", src=item["src"], page=page_num, meta=_flow_meta(item))
+            )
             continue
 
-        # 2. Trigger: Book Two Transition
+        if item["type"] == "list":
+            if not current_chapter:
+                current_chapter = create_node("chapter", title="Title Page & Copyright")
+            child_nodes = [
+                create_node("list_item", text=ch["text"], page=ch.get("page"))
+                for ch in item.get("children", [])
+                if ch.get("type") == "list_item"
+            ]
+            if child_nodes:
+                current_chapter["children"].append(
+                    create_node("list", children=child_nodes, meta=_flow_meta(item))
+                )
+            else:
+                logger.warning("basic_text: empty list skipped")
+            continue
+
+        if item["type"] == "quote":
+            if not current_chapter:
+                current_chapter = create_node("chapter", title="Title Page & Copyright")
+            if len(clean_text) > 2:
+                current_chapter["children"].append(
+                    create_node(
+                        "quote", text=raw_text, page=page_num, meta=_flow_meta(item)
+                    )
+                )
+            continue
+
+        if item["type"] == "toc":
+            if not current_chapter:
+                current_chapter = create_node("chapter", title="Title Page & Copyright")
+            child_nodes = [
+                create_node("toc_line", text=ch["text"], page=ch.get("page"))
+                for ch in item.get("children", [])
+                if ch.get("type") == "toc_line"
+            ]
+            if child_nodes:
+                current_chapter["children"].append(
+                    create_node(
+                        "toc",
+                        children=child_nodes,
+                        page=item.get("page"),
+                        meta=_flow_meta(item),
+                    )
+                )
+            else:
+                logger.warning("basic_text: empty toc skipped")
+            continue
+
         if upper_clean in ["BOOK TWO", "BOOK TWO: PERSONAL STORIES", "PERSONAL STORIES"]:
             close_chapter()
             current_chapter = create_node("chapter", title="Book Two: Personal Stories")
             book_two_mode = True
             continue
 
-        # 3. Trigger: Standard Chapters (e.g., "CHAPTER ONE")
         if upper_clean.startswith("CHAPTER "):
             close_chapter()
-            # Initialize with the number (e.g., "Chapter One")
             current_chapter = create_node("chapter", title=clean_text.title())
             awaiting_chapter_title = True
             continue
 
-        # 4. Trigger: Front Matter
         if upper_clean in ["OUR SYMBOL", "PREFACE", "INTRODUCTION"]:
             close_chapter()
             current_chapter = create_node("chapter", title=clean_text.title())
             continue
 
-        # 5. Trigger: Book Two Stories
-        # In Book Two, stories don't say "Chapter". We rely on Docling identifying a "heading"
         if book_two_mode and item["type"] == "heading" and len(clean_text) > 3:
-            # Prevent false positives if a story contains a subhead like "Step One"
             if not upper_clean.startswith(("STEP ", "TRADITION ")):
                 close_chapter()
                 current_chapter = create_node("chapter", title=clean_text.title())
                 continue
 
-        # 6. Catch-all for Front-Matter (Title page, copyrights) before "Our Symbol"
         if not current_chapter:
             current_chapter = create_node("chapter", title="Title Page & Copyright")
 
-        # 7. Merge two-part Chapter Titles
-        # If the last block was "CHAPTER ONE", this block is "WHO IS AN ADDICT?"
         if awaiting_chapter_title and item["type"] in ["heading", "paragraph"]:
-            # Append the real title to the chapter node
             current_chapter["title"] = f"{current_chapter['title']}: {clean_text.title()}"
-            
-            # Also add it as a rendered heading inside the chapter body
-            title_node = create_node("heading", text=raw_text, page=page_num)
+            title_node = create_node(
+                "heading",
+                text=raw_text,
+                page=page_num,
+                level=item.get("level"),
+                meta=_flow_meta(item),
+            )
             current_chapter["children"].append(title_node)
-            
             awaiting_chapter_title = False
             continue
 
-        # 8. Build the Body Text
-        if len(clean_text) > 2:  # Filter out tiny OCR artifacts
-            # We preserve Docling's distinction between paragraphs and inner sub-headings
-            node_type = "heading" if item["type"] == "heading" else "paragraph"
-            body_node = create_node(node_type, text=raw_text, page=page_num)
+        if len(clean_text) > 2:
+            if item["type"] == "heading":
+                body_node = create_node(
+                    "heading",
+                    text=raw_text,
+                    page=page_num,
+                    level=item.get("level"),
+                    meta=_flow_meta(item),
+                )
+            else:
+                body_node = create_node(
+                    "paragraph",
+                    text=raw_text,
+                    page=page_num,
+                    meta=_flow_meta(item),
+                )
             current_chapter["children"].append(body_node)
 
-    # Push the final chapter when the loop ends
     close_chapter()
 
     return chapters

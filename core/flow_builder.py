@@ -1,11 +1,15 @@
 from pathlib import Path
+
+from docling_core.types.doc.document import TableItem
 from docling_core.types.doc.labels import DocItemLabel
+
+from core.reading_quality import normalize_reader_heading
 
 
 def build_flow(doc, image_dir: Path):
     """
     Converts a Docling document into a flat, ordered flow of blocks.
-    Includes text + images in correct reading order.
+    Includes text, tables / document index, and images in reading order.
     """
 
     flow = []
@@ -27,14 +31,46 @@ def build_flow(doc, image_dir: Path):
             is_header = item.label in [
                 DocItemLabel.TITLE,
                 DocItemLabel.SECTION_HEADER,
-                DocItemLabel.PAGE_HEADER
+                DocItemLabel.PAGE_HEADER,
             ]
 
-            flow.append({
+            if is_header:
+                text = normalize_reader_heading(text)
+
+            node = {
                 "type": "heading" if is_header else "paragraph",
                 "text": text,
-                "page": page
-            })
+                "page": page,
+            }
+            lbl = getattr(item, "label", None)
+            if lbl == DocItemLabel.CAPTION:
+                node["flow_kind"] = "caption"
+            elif lbl == DocItemLabel.FOOTNOTE:
+                node["flow_kind"] = "footnote"
+            flow.append(node)
+
+        # TABLES & INDEX (Docling TableItem covers TABLE + DOCUMENT_INDEX)
+        elif isinstance(item, TableItem):
+            try:
+                text = item.export_to_markdown().strip()
+            except Exception as e:
+                print(f"Table export failed: {e}")
+                text = ""
+            if not text:
+                continue
+            kind = (
+                "document_index"
+                if item.label == DocItemLabel.DOCUMENT_INDEX
+                else "table"
+            )
+            flow.append(
+                {
+                    "type": "paragraph",
+                    "text": text,
+                    "page": page,
+                    "flow_kind": kind,
+                }
+            )
 
         # IMAGE BLOCKS
         elif hasattr(item, "image") and item.image:
@@ -47,10 +83,12 @@ def build_flow(doc, image_dir: Path):
                 print(f"Image save failed: {e}")
                 continue
 
-            flow.append({
-                "type": "image",
-                "src": str(path),
-                "page": page
-            })
+            flow.append(
+                {
+                    "type": "image",
+                    "src": str(path),
+                    "page": page,
+                }
+            )
 
     return flow

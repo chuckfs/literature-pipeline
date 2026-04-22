@@ -10,7 +10,9 @@ BLOCK_TYPES = {
     "list",
     "list_item",
     "image",
-    "divider"
+    "divider",
+    "toc",
+    "toc_line",
 }
 
 
@@ -22,16 +24,18 @@ def create_node(
     meta: dict = None,
     src: str = None,
     page: int = None,
-    id: str = None
+    id: str = None,
+    level: int = None,
 ):
     """
     Creates a schema-compliant node.
+    Headings always include ``level`` (1–3) in the output dict when type is ``heading``.
     """
 
     if type not in BLOCK_TYPES:
         raise ValueError(f"Invalid block type: {type}")
 
-    return {
+    node = {
         "id": id,
         "type": type,
         "title": title,
@@ -39,5 +43,8 @@ def create_node(
         "src": src,
         "page": page,
         "meta": meta or {},
-        "children": children or []
+        "children": children or [],
     }
+    if type == "heading":
+        node["level"] = level if level is not None else 3
+    return node

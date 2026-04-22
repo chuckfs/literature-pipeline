@@ -1,3 +1,11 @@
+"""
+Optional pipeline flags (override in this file or set env LITERATURE_PIPELINE_DEBUG=1).
+"""
+
+# When True, TOC-like lines on early pages are captured into ``toc`` blocks (not deleted).
+# See ``core.semantics.should_capture_as_toc_line`` for heuristics.
+CLEANER_STRIP_TOC_LINES = False
+
 JOBS = [
     {
         "input": "input/na/justfortoday.pdf",
