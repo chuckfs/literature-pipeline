@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
-from tqdm import tqdm  # ← move this up
+from tqdm import tqdm
+import time
 
 from core.extractor import extract_document
 from core.flow_builder import build_flow
@@ -12,9 +13,9 @@ def run():
     parsers = load_parsers()
 
     total = len(JOBS)
-    for idx, job in enumerate(tqdm(JOBS, desc="Processing PDFs"), start=1):
+    for idx, job in enumerate(tqdm(JOBS, desc="Processing PDFs", unit="pdf", dynamic_ncols=True), start=1):
         print(f"\n[{idx}/{total}] Processing: {job['input']}")
-        import time
+
         start = time.time()
 
         doc = extract_document(job["input"])
@@ -25,7 +26,7 @@ def run():
         parser = parsers.get(job["parser"])
 
         if not parser:
-            print(f"Parser not found: {job['parser']}")
+            print(f"⚠️ Parser not found: {job['parser']} — skipping")
             continue
 
         structured_content = parser(flow)
@@ -38,8 +39,8 @@ def run():
             "content": structured_content
         }
 
-        output_path = Path(job["output"]) / \
-            f"{job['book'].lower().replace(' ', '_')}.json"
+        safe_name = job['book'].lower().replace(' ', '_').replace('/', '_')
+        output_path = Path(job["output"]) / f"{safe_name}.json"
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
         with output_path.open("w", encoding="utf-8") as f:
