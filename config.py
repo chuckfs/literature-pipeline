@@ -1,20 +1,11 @@
-"""
-Optional pipeline flags (override in this file or set env LITERATURE_PIPELINE_DEBUG=1).
-"""
-
-# When True, TOC-like lines (content heuristics) are captured into ``toc`` blocks (not deleted).
-# See ``core.semantics.should_capture_as_toc_line`` for heuristics.
-CLEANER_STRIP_TOC_LINES = False
-
 JOBS = [
     {
         "input": "input/na/justfortoday.pdf",
-        "output": "output/na",
-        "parser": "generic",
+        "output": "output/na/just_for_today",
+        "parser": "na.just_for_today",
         "program": "NA",
         "book": "Just For Today",
-        "type": "daily",
-        "structure": "entry_list"
+        "type": "daily"
     },
     {
         "input": "input/na/basictext.pdf",
@@ -22,8 +13,7 @@ JOBS = [
         "parser": "na.basic_text",
         "program": "NA",
         "book": "Basic Text",
-        "type": "chaptered",
-        "structure": "hierarchical"
+        "type": "chaptered"
     },
     {
         "input": "input/na/livingclean.pdf",
@@ -31,7 +21,6 @@ JOBS = [
         "parser": "na.living_clean",
         "program": "NA",
         "book": "Living Clean",
-        "type": "chaptered",
-        "structure": "nested_sections"
+        "type": "chaptered"
     }
 ]
