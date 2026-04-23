@@ -1,7 +1,7 @@
 JOBS = [
     {
         "input": "input/na/justfortoday.pdf",
-        "output": "output/na",
+        "output": "output/na/just_for_today",
         "parser": "na.just_for_today",
         "program": "NA",
         "book": "Just For Today",
