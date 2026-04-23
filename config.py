@@ -1,11 +1,12 @@
 JOBS = [
     {
         "input": "input/na/justfortoday.pdf",
-        "output": "output/na/just_for_today",
+        "output": "output/na",
         "parser": "na.just_for_today",
         "program": "NA",
         "book": "Just For Today",
-        "type": "daily"
+        "type": "daily",
+        "structure": "entry_list"
     },
     {
         "input": "input/na/basictext.pdf",
@@ -13,7 +14,8 @@ JOBS = [
         "parser": "na.basic_text",
         "program": "NA",
         "book": "Basic Text",
-        "type": "chaptered"
+        "type": "chaptered",
+        "structure": "hierarchical"
     },
     {
         "input": "input/na/livingclean.pdf",
@@ -21,6 +23,7 @@ JOBS = [
         "parser": "na.living_clean",
         "program": "NA",
         "book": "Living Clean",
-        "type": "chaptered"
+        "type": "chaptered",
+        "structure": "nested_sections"
     }
 ]
