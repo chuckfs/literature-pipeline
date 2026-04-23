@@ -93,9 +93,9 @@ def paragraph_might_be_quote(text: str) -> bool:
     return False
 
 
-def is_soft_toc_cluster_line(text: str, page: int | None) -> bool:
-    """Early-page TOC-ish rows without the strong dot-leader pattern."""
-    if page is None or page > 5 or len(text) >= 100:
+def is_soft_toc_cluster_line(text: str) -> bool:
+    """TOC-ish rows without the strong dot-leader pattern (content-only, no page gate)."""
+    if len(text) >= 100:
         return False
     if re.search(r"\.{3,}", text):
         return True
@@ -104,11 +104,11 @@ def is_soft_toc_cluster_line(text: str, page: int | None) -> bool:
     return False
 
 
-def should_capture_as_toc_line(text: str, page: int | None) -> bool:
+def should_capture_as_toc_line(text: str) -> bool:
     """Whether a line should be stored in a toc block (when TOC structuring is on)."""
     if is_probable_toc_leader_line(text):
         return True
-    return is_soft_toc_cluster_line(text, page)
+    return is_soft_toc_cluster_line(text)
 
 
 def enrich_heading_item(item: dict) -> dict:

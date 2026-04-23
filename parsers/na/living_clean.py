@@ -1,8 +1,29 @@
 import logging
+import re
 
 from core.schema import create_node
 
 logger = logging.getLogger(__name__)
+
+
+def _heading_text_plausible(clean_text: str) -> bool:
+    """Reject obvious OCR junk for section / chapter titles; keep normal prose."""
+    t = clean_text.strip()
+    if len(t) < 3:
+        return False
+    for w in re.findall(r"\S+", t):
+        core = re.sub(r"^[^\w]+|[^\w]+$", "", w)
+        if len(core) < 4:
+            continue
+        if any(c.isdigit() for c in core) and any(c.isalpha() for c in core):
+            if re.search(r"[A-Za-z]\d[A-Za-z]", core) or re.search(r"[A-Za-z]{2,}\d", core):
+                return False
+    letters = [c.lower() for c in t if c.isalpha()]
+    if len(letters) >= 8:
+        vow = sum(1 for c in letters if c in "aeiouy")
+        if vow / len(letters) < 0.12:
+            return False
+    return True
 
 _HANDLED = frozenset({"heading", "paragraph", "image", "list", "quote", "toc"})
 
@@ -132,6 +153,17 @@ def parse(flow: list) -> list:
             current_chapter = create_node("chapter", title="Front Matter & Preface")
 
         if awaiting_chapter_title and item["type"] in ["heading", "paragraph"]:
+            if not _heading_text_plausible(clean_text):
+                awaiting_chapter_title = False
+                append_body(
+                    create_node(
+                        "paragraph",
+                        text=raw_text,
+                        page=page_num,
+                        meta=_flow_meta(item),
+                    )
+                )
+                continue
             current_chapter["title"] = f"{current_chapter['title']}: {clean_text.title()}"
             title_node = create_node(
                 "heading",
@@ -145,6 +177,16 @@ def parse(flow: list) -> list:
             continue
 
         if item["type"] == "heading" and len(clean_text) > 3:
+            if not _heading_text_plausible(clean_text):
+                append_body(
+                    create_node(
+                        "paragraph",
+                        text=raw_text,
+                        page=page_num,
+                        meta=_flow_meta(item),
+                    )
+                )
+                continue
             current_section = create_node("section", title=clean_text.title())
             current_chapter["children"].append(current_section)
             heading_node = create_node(
